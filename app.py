@@ -5,6 +5,14 @@ from datetime import datetime
 import streamlit as st
 
 from gds_generators import generate_1d_grating, generate_2d_periodic, generate_from_image
+from gds_generators.image_to_gds import image_bytes_to_mask
+from gds_generators.preview import (
+    mask_overview,
+    periodic_detail_1d,
+    periodic_detail_2d,
+    periodic_overview_1d,
+    periodic_overview_2d,
+)
 
 
 st.set_page_config(
@@ -38,6 +46,14 @@ def download_gds(data: bytes, filename: str) -> None:
     )
 
 
+def show_periodic_previews(overview: bytes, detail: bytes) -> None:
+    st.subheader("预览")
+    st.caption("总面积尺度概览图")
+    st.image(overview, use_container_width=True)
+    st.caption("3 个周期尺度细节图")
+    st.image(detail, use_container_width=True)
+
+
 def periodic_page() -> None:
     structure_mode = st.segmented_control(
         "结构类型",
@@ -63,7 +79,10 @@ def periodic_page() -> None:
                     layer=layer,
                     filename=f"gdsdraw_1d_grating_{timestamp()}.gds",
                 )
+                overview = periodic_overview_1d(period, duty, total_length, total_width)
+                detail = periodic_detail_1d(period, duty, total_width)
                 st.success("已生成。周期性复制使用 GDS 阵列引用。")
+                show_periodic_previews(overview, detail)
                 show_summary(result.summary)
                 download_gds(result.data, result.filename)
             except Exception as exc:
@@ -107,7 +126,28 @@ def periodic_page() -> None:
                     layer=layer,
                     filename=f"gdsdraw_2d_{shape}_{timestamp()}.gds",
                 )
+                overview = periodic_overview_2d(
+                    shape,
+                    period_x,
+                    period_y,
+                    total_length,
+                    total_width,
+                    diameter=diameter,
+                    square_side=square_side,
+                    rect_l=rect_length,
+                    rect_w=rect_width,
+                )
+                detail = periodic_detail_2d(
+                    shape,
+                    period_x,
+                    period_y,
+                    diameter=diameter,
+                    square_side=square_side,
+                    rect_l=rect_length,
+                    rect_w=rect_width,
+                )
                 st.success("已生成。周期性复制使用 GDS 阵列引用。")
+                show_periodic_previews(overview, detail)
                 show_summary(result.summary)
                 download_gds(result.data, result.filename)
             except Exception as exc:
@@ -132,8 +172,9 @@ def image_page() -> None:
             return
 
         try:
+            image_bytes = uploaded.getvalue()
             result = generate_from_image(
-                image_bytes=uploaded.getvalue(),
+                image_bytes=image_bytes,
                 actual_length_um=actual_length,
                 actual_width_um=actual_width,
                 threshold=threshold,
@@ -142,7 +183,11 @@ def image_page() -> None:
                 max_pixels=int(max_pixels),
                 filename=f"gdsdraw_image_{timestamp()}.gds",
             )
+            mask = image_bytes_to_mask(image_bytes, threshold=threshold, invert=invert)
             st.success("已生成。图片结构区域已按行合并为矩形，减少 GDS 图元数量。")
+            st.subheader("预览")
+            st.caption("总面积尺度概览图")
+            st.image(mask_overview(mask), use_container_width=True)
             show_summary(result.summary)
             download_gds(result.data, result.filename)
         except Exception as exc:
