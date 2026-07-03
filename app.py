@@ -27,6 +27,10 @@ def timestamp() -> str:
     return datetime.now().strftime("%Y%m%d_%H%M%S")
 
 
+def mm_to_um(value_mm: float) -> float:
+    return float(value_mm) * 1000.0
+
+
 def show_summary(summary: dict) -> None:
     st.caption("生成摘要")
     st.dataframe(
@@ -55,6 +59,7 @@ def show_periodic_previews(overview: bytes, detail: bytes) -> None:
 
 
 def periodic_page() -> None:
+    st.caption("总长度/总宽度使用 mm；周期和结构尺度使用 um。")
     structure_mode = st.segmented_control(
         "结构类型",
         ["一维光栅", "二维结构"],
@@ -62,25 +67,31 @@ def periodic_page() -> None:
     )
 
     layer = st.number_input("Layer", min_value=0, max_value=255, value=0, step=1)
+    invert = st.toggle("反转结构区域", value=False, help="开启后生成周期单元内的互补结构区域。")
 
     if structure_mode == "一维光栅":
         period = st.number_input("周期，单位 um", min_value=0.0001, value=3.2, step=0.1, format="%.4f")
         duty = st.slider("一维占空比", min_value=0.01, max_value=0.99, value=0.50, step=0.01)
-        total_length = st.number_input("总长度，单位 um", min_value=0.0001, value=1000.0, step=100.0, format="%.4f")
-        total_width = st.number_input("总宽度，单位 um", min_value=0.0001, value=1000.0, step=100.0, format="%.4f")
+        total_length_mm = st.number_input("总长度，单位 mm", min_value=0.0001, value=1.0, step=0.1, format="%.4f")
+        total_width_mm = st.number_input("总宽度，单位 mm", min_value=0.0001, value=1.0, step=0.1, format="%.4f")
+        total_length_um = mm_to_um(total_length_mm)
+        total_width_um = mm_to_um(total_width_mm)
 
         if st.button("生成一维光栅 GDS", type="primary", use_container_width=True):
             try:
                 result = generate_1d_grating(
                     period_um=period,
                     duty_cycle=duty,
-                    total_length_um=total_length,
-                    total_width_um=total_width,
+                    total_length_um=total_length_um,
+                    total_width_um=total_width_um,
                     layer=layer,
+                    invert=invert,
                     filename=f"gdsdraw_1d_grating_{timestamp()}.gds",
                 )
-                overview = periodic_overview_1d(period, duty, total_length, total_width)
-                detail = periodic_detail_1d(period, duty, total_width)
+                overview = periodic_overview_1d(period, duty, total_length_um, total_width_um, invert=invert)
+                detail = periodic_detail_1d(period, duty, total_width_um, invert=invert)
+                result.summary["total_length_mm"] = total_length_mm
+                result.summary["total_width_mm"] = total_width_mm
                 st.success("已生成。周期性复制使用 GDS 阵列引用。")
                 show_periodic_previews(overview, detail)
                 show_summary(result.summary)
@@ -107,8 +118,10 @@ def periodic_page() -> None:
 
         period_x = st.number_input("X 周期，单位 um", min_value=0.0001, value=3.2, step=0.1, format="%.4f")
         period_y = st.number_input("Y 周期，单位 um", min_value=0.0001, value=3.2, step=0.1, format="%.4f")
-        total_length = st.number_input("总长度，单位 um", min_value=0.0001, value=1000.0, step=100.0, format="%.4f")
-        total_width = st.number_input("总宽度，单位 um", min_value=0.0001, value=1000.0, step=100.0, format="%.4f")
+        total_length_mm = st.number_input("总长度，单位 mm", min_value=0.0001, value=1.0, step=0.1, format="%.4f")
+        total_width_mm = st.number_input("总宽度，单位 mm", min_value=0.0001, value=1.0, step=0.1, format="%.4f")
+        total_length_um = mm_to_um(total_length_mm)
+        total_width_um = mm_to_um(total_width_mm)
 
         if st.button("生成二维结构 GDS", type="primary", use_container_width=True):
             try:
@@ -116,26 +129,28 @@ def periodic_page() -> None:
                     shape=shape,
                     period_x_um=period_x,
                     period_y_um=period_y,
-                    total_length_um=total_length,
-                    total_width_um=total_width,
+                    total_length_um=total_length_um,
+                    total_width_um=total_width_um,
                     diameter_um=diameter,
                     square_side_um=square_side,
                     rectangle_length_um=rect_length,
                     rectangle_width_um=rect_width,
                     circle_points=circle_points,
                     layer=layer,
+                    invert=invert,
                     filename=f"gdsdraw_2d_{shape}_{timestamp()}.gds",
                 )
                 overview = periodic_overview_2d(
                     shape,
                     period_x,
                     period_y,
-                    total_length,
-                    total_width,
+                    total_length_um,
+                    total_width_um,
                     diameter=diameter,
                     square_side=square_side,
                     rect_l=rect_length,
                     rect_w=rect_width,
+                    invert=invert,
                 )
                 detail = periodic_detail_2d(
                     shape,
@@ -145,7 +160,10 @@ def periodic_page() -> None:
                     square_side=square_side,
                     rect_l=rect_length,
                     rect_w=rect_width,
+                    invert=invert,
                 )
+                result.summary["total_length_mm"] = total_length_mm
+                result.summary["total_width_mm"] = total_width_mm
                 st.success("已生成。周期性复制使用 GDS 阵列引用。")
                 show_periodic_previews(overview, detail)
                 show_summary(result.summary)
@@ -155,9 +173,10 @@ def periodic_page() -> None:
 
 
 def image_page() -> None:
+    st.caption("图片实际长度/宽度使用 mm；输出 GDS 内部会自动换算为 um。")
     uploaded = st.file_uploader("上传图片", type=["png", "jpg", "jpeg", "bmp", "tif", "tiff"])
-    actual_length = st.number_input("图片实际长度，单位 um", min_value=0.0001, value=1000.0, step=100.0, format="%.4f")
-    actual_width = st.number_input("图片实际宽度，单位 um", min_value=0.0001, value=1000.0, step=100.0, format="%.4f")
+    actual_length_mm = st.number_input("图片实际长度，单位 mm", min_value=0.0001, value=1.0, step=0.1, format="%.4f")
+    actual_width_mm = st.number_input("图片实际宽度，单位 mm", min_value=0.0001, value=1.0, step=0.1, format="%.4f")
     threshold = st.slider("二值化阈值", min_value=0, max_value=255, value=128, step=1)
     invert = st.toggle("反转黑白对应关系", value=False)
     layer = st.number_input("Layer", min_value=0, max_value=255, value=0, step=1)
@@ -173,10 +192,12 @@ def image_page() -> None:
 
         try:
             image_bytes = uploaded.getvalue()
+            actual_length_um = mm_to_um(actual_length_mm)
+            actual_width_um = mm_to_um(actual_width_mm)
             result = generate_from_image(
                 image_bytes=image_bytes,
-                actual_length_um=actual_length,
-                actual_width_um=actual_width,
+                actual_length_um=actual_length_um,
+                actual_width_um=actual_width_um,
                 threshold=threshold,
                 invert=invert,
                 layer=layer,
@@ -184,6 +205,8 @@ def image_page() -> None:
                 filename=f"gdsdraw_image_{timestamp()}.gds",
             )
             mask = image_bytes_to_mask(image_bytes, threshold=threshold, invert=invert)
+            result.summary["actual_length_mm"] = actual_length_mm
+            result.summary["actual_width_mm"] = actual_width_mm
             st.success("已生成。图片结构区域已按行合并为矩形，减少 GDS 图元数量。")
             st.subheader("预览")
             st.caption("总面积尺度概览图")
